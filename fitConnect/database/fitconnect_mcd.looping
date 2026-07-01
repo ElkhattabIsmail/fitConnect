@@ -1,0 +1,68 @@
+# MCD FitConnect - Merise Looping
+
+## Entités
+
+### ADHERENT
+- id_adherent (identifiant)
+- nom
+- prenom
+- email
+- telephone
+- date_inscription
+
+### SALLE
+- id_salle (identifiant)
+- nom_salle
+- adresse
+- ville
+
+### ABONNEMENT
+- id_abonnement (identifiant)
+- type_abonnement
+- date_debut
+- date_fin
+
+### SEANCE
+- id_seance (identifiant)
+- date_seance
+- duree
+
+### TYPE_ACTIVITE
+- id_activite (identifiant)
+- libelle
+
+### EQUIPEMENT
+- id_equipement (identifiant)
+- nom_equipement
+
+## Associations
+
+### INSCRIPTION
+- ADHERENT (1,1) ---- (0,N) SALLE
+- Un adhérent est inscrit dans une seule salle
+- Une salle peut avoir plusieurs adhérents
+
+### POSSEDE
+- ADHERENT (0,N) ---- (1,1) ABONNEMENT
+- Un adhérent peut avoir plusieurs abonnements (historique)
+- Un abonnement appartient à un seul adhérent
+
+### EFFECTUE
+- ADHERENT (0,N) ---- (1,1) SEANCE
+- Un adhérent peut effectuer plusieurs séances
+- Une séance est effectuée par un seul adhérent
+
+### A_LIEU
+- SALLE (0,N) ---- (1,1) SEANCE
+- Une salle peut accueillir plusieurs séances
+- Une séance a lieu dans une seule salle
+
+### CONCERNE
+- TYPE_ACTIVITE (0,N) ---- (0,1) SEANCE
+- Un type d'activité peut concerner plusieurs séances
+- Une séance concerne un seul type d'activité (optionnel)
+
+### UTILISE
+- EQUIPEMENT (0,N) ---- (0,N) SEANCE
+- Un équipement peut être utilisé dans plusieurs séances
+- Une séance peut utiliser plusieurs équipements (optionnel)
