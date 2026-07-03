@@ -1,85 +1,83 @@
 <?php
 
-namespace App\Services;
-
-use App\Entities\Adherent;
-use App\Repositories\AdherentRepository;
-use App\Repositories\AbonnementRepository;
-use App\Repositories\SeanceRepository;
-use RuntimeException;
-
+/**
+ * AdherentService — logique métier liée aux adhérents,
+ * totalement indépendante de la couche de persistance (Repositories).
+ */
 class AdherentService
 {
     private AdherentRepository $adherentRepository;
-    private AbonnementRepository $abonnementRepository;
-    private SeanceRepository $seanceRepository;
-    
-    public function __construct()
+
+    public function __construct(AdherentRepository $adherentRepository)
     {
-        $this->adherentRepository = new AdherentRepository();
-        $this->abonnementRepository = new AbonnementRepository();
-        $this->seanceRepository = new SeanceRepository();
+        $this->adherentRepository = $adherentRepository;
     }
-    
-    public function getAllAdherents(): array
+
+    public function listerTous(): array
     {
         return $this->adherentRepository->findAll();
     }
-    
-    public function getAdherentById(int $id): ?Adherent
+
+    public function trouverParId(int $id): ?Adherent
     {
         return $this->adherentRepository->findById($id);
     }
-    
-    public function getAdherentsBySalle(int $idSalle): array
+
+    /**
+     * Inscrit un nouvel adhérent après vérification des règles métier
+     * (unicité de l'email notamment).
+     */
+    public function inscrire(array $donnees): int
     {
-        return $this->adherentRepository->findBySalle($idSalle);
-    }
-    
-    public function createAdherent(Adherent $adherent): Adherent
-    {
-        $id = $this->adherentRepository->create($adherent);
-        $adherent->setIdAdherent($id);
-        return $adherent;
-    }
-    
-    public function updateAdherent(Adherent $adherent): bool
-    {
-        return $this->adherentRepository->update($adherent);
-    }
-    
-    public function deleteAdherent(int $id): bool
-    {
-        // Vérifier si l'adhérent a des séances
-        if ($this->seanceRepository->findByAdherent($id)) {
-            throw new RuntimeException('Impossible de supprimer un adhérent avec des séances enregistrées');
+        if ($this->adherentRepository->findByEmail($donnees['email'])) {
+            throw new RuntimeException('Un adhérent avec cet email existe déjà.');
         }
-        
-        // Vérifier si l'adhérent a un abonnement actif
-        if ($this->adherentRepository->hasActiveAbonnement($id)) {
-            throw new RuntimeException('Impossible de supprimer un adhérent avec un abonnement en cours');
-        }
-        
-        return $this->adherentRepository->delete($id);
+
+        $adherent = new Adherent(
+            null,
+            $donnees['nom'],
+            $donnees['prenom'],
+            $donnees['email'],
+            $donnees['telephone'] ?? null,
+            $donnees['date_naissance'] ?? null,
+            $donnees['date_inscription'] ?? date('Y-m-d'),
+            (int) $donnees['id_salle']
+        );
+
+        return $this->adherentRepository->create($adherent);
     }
-    
-    public function canDeleteAdherent(int $id): bool
-    {
-        return !$this->seanceRepository->findByAdherent($id) && !$this->adherentRepository->hasActiveAbonnement($id);
-    }
-    
-    public function getAdherentWithActiveAbonnement(int $id): ?array
+
+    public function modifier(int $id, array $donnees): bool
     {
         $adherent = $this->adherentRepository->findById($id);
         if (!$adherent) {
-            return null;
+            throw new RuntimeException("Adhérent introuvable (id={$id}).");
         }
-        
-        $activeAbonnement = $this->abonnementRepository->findActiveByAdherent($id);
-        
-        return [
-            'adherent' => $adherent,
-            'active_abonnement' => $activeAbonnement
-        ];
+
+        $adherent->setNom($donnees['nom']);
+        $adherent->setPrenom($donnees['prenom']);
+        $adherent->setEmail($donnees['email']);
+        $adherent->setTelephone($donnees['telephone'] ?? null);
+        $adherent->setDateNaissance($donnees['date_naissance'] ?? null);
+        $adherent->setIdSalle((int) $donnees['id_salle']);
+
+        return $this->adherentRepository->update($adherent);
+    }
+
+    /**
+     * Règle de gestion : un adhérent ne peut pas être supprimé
+     * s'il possède des séances enregistrées ou un abonnement en cours.
+     */
+    public function supprimer(int $id): bool
+    {
+        if ($this->adherentRepository->countSeances($id) > 0) {
+            throw new RuntimeException('Suppression impossible : cet adhérent possède des séances enregistrées.');
+        }
+
+        if ($this->adherentRepository->countAbonnementsActifs($id) > 0) {
+            throw new RuntimeException('Suppression impossible : cet adhérent possède un abonnement en cours.');
+        }
+
+        return $this->adherentRepository->delete($id);
     }
 }

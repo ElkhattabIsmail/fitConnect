@@ -1,117 +1,60 @@
 <?php
 
-namespace App\Controllers;
-
-use App\Services\SeanceService;
-use App\Entities\Seance;
-use Exception;
-
+/**
+ * SeanceController — orchestre SeanceService et les référentiels
+ * (salles, activités, équipements) pour l'enregistrement des séances.
+ */
 class SeanceController
 {
     private SeanceService $seanceService;
-    private string $baseUrl;
-    
-    public function __construct()
-    {
-        $this->seanceService = new SeanceService();
-        $this->baseUrl = $_SERVER['SCRIPT_NAME'];
+    private AdherentService $adherentService;
+    private SalleRepository $salleRepository;
+    private ReferentielRepository $referentielRepository;
+
+    public function __construct(
+        SeanceService $seanceService,
+        AdherentService $adherentService,
+        SalleRepository $salleRepository,
+        ReferentielRepository $referentielRepository
+    ) {
+        $this->seanceService = $seanceService;
+        $this->adherentService = $adherentService;
+        $this->salleRepository = $salleRepository;
+        $this->referentielRepository = $referentielRepository;
     }
-    
+
+    /** GET /?page=seances */
     public function index(): void
     {
-        global $baseUrl;
-        $baseUrl = $this->baseUrl;
-        $seances = $this->seanceService->getAllSeances();
-        require __DIR__ . '/../../views/dashboard/index.php';
+        $seances = $this->seanceService->listerToutes();
+        require __DIR__ . '/../../views/seances/index.php';
     }
-    
+
+    /** GET /?page=seances&action=create */
     public function create(): void
     {
-        global $baseUrl;
-        $baseUrl = $this->baseUrl;
-        
-        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-            try {
-                $seance = new Seance(
-                    $_POST['date_seance'],
-                    (int) $_POST['duree'],
-                    (int) $_POST['id_adherent'],
-                    (int) $_POST['id_salle'],
-                    !empty($_POST['id_activite']) ? (int) $_POST['id_activite'] : null,
-                    !empty($_POST['id_equipement']) ? (int) $_POST['id_equipement'] : null
-                );
-                
-                $this->seanceService->createSeance($seance);
-                header('Location: ' . $this->baseUrl . '?route=dashboard');
-                exit;
-            } catch (Exception $e) {
-                $error = $e->getMessage();
-            }
-        }
-        
-        require __DIR__ . '/../../views/dashboard/create.php';
+        $adherents = $this->adherentService->listerTous();
+        $salles = $this->salleRepository->findAll();
+        $activites = $this->referentielRepository->findAllActivites();
+        $erreur = null;
+        require __DIR__ . '/../../views/seances/create.php';
     }
-    
-    public function edit(int $id): void
+
+    /** POST /?page=seances&action=store */
+    public function store(): void
     {
-        global $baseUrl;
-        $baseUrl = $this->baseUrl;
-        
-        $seance = $this->seanceService->getSeanceById($id);
-        
-        if (!$seance) {
-            header('Location: ' . $this->baseUrl . '?route=dashboard');
-            exit;
-        }
-        
-        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-            try {
-                $seance->setDateSeance($_POST['date_seance']);
-                $seance->setDuree((int) $_POST['duree']);
-                $seance->setIdAdherent((int) $_POST['id_adherent']);
-                $seance->setIdSalle((int) $_POST['id_salle']);
-                $seance->setIdActivite(!empty($_POST['id_activite']) ? (int) $_POST['id_activite'] : null);
-                $seance->setIdEquipement(!empty($_POST['id_equipement']) ? (int) $_POST['id_equipement'] : null);
-                
-                $this->seanceService->updateSeance($seance);
-                header('Location: ' . $this->baseUrl . '?route=dashboard');
-                exit;
-            } catch (Exception $e) {
-                $error = $e->getMessage();
-            }
-        }
-        
-        require __DIR__ . '/../../views/dashboard/edit.php';
-    }
-    
-    public function delete(int $id): void
-    {
-        global $baseUrl;
-        $baseUrl = $this->baseUrl;
-        
+        $adherents = $this->adherentService->listerTous();
+        $salles = $this->salleRepository->findAll();
+        $activites = $this->referentielRepository->findAllActivites();
+        $erreur = null;
+
         try {
-            $this->seanceService->deleteSeance($id);
-            header('Location: ' . $this->baseUrl . '?route=dashboard');
+            $this->seanceService->enregistrer($_POST);
+            header('Location: index.php?page=seances&success=1');
             exit;
-        } catch (Exception $e) {
-            $error = $e->getMessage();
-            $seances = $this->seanceService->getAllSeances();
-            require __DIR__ . '/../../views/dashboard/index.php';
+        } catch (Throwable $e) {
+            $erreur = $e->getMessage();
+            require __DIR__ . '/../../views/seances/create.php';
         }
-    }
-    
-    public function show(int $id): void
-    {
-        global $baseUrl;
-        $baseUrl = $this->baseUrl;
-        
-        $seance = $this->seanceService->getSeanceById($id);
-        
-        if (!$seance) {
-            header('Location: ' . $this->baseUrl . '?route=dashboard');
-            exit;
-        }
-        
-        require __DIR__ . '/../../views/dashboard/show.php';
     }
 }

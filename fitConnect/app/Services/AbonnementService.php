@@ -1,97 +1,87 @@
 <?php
 
-namespace App\Services;
-
-use App\Entities\Abonnement;
-use App\Repositories\AbonnementRepository;
-use App\Repositories\AdherentRepository;
-
+/**
+ * AbonnementService — applique les règles de gestion des abonnements,
+ * en particulier : "un adhérent ne détient qu'un seul abonnement
+ * actif à la fois".
+ */
 class AbonnementService
 {
     private AbonnementRepository $abonnementRepository;
     private AdherentRepository $adherentRepository;
-    
-    public function __construct()
-    {
-        $this->abonnementRepository = new AbonnementRepository();
-        $this->adherentRepository = new AdherentRepository();
+
+    private const DUREES_JOURS = [
+        Abonnement::TYPE_MENSUEL     => 30,
+        Abonnement::TYPE_TRIMESTRIEL => 90,
+        Abonnement::TYPE_ANNUEL      => 365,
+    ];
+
+    public function __construct(
+        AbonnementRepository $abonnementRepository,
+        AdherentRepository $adherentRepository
+    ) {
+        $this->abonnementRepository = $abonnementRepository;
+        $this->adherentRepository = $adherentRepository;
     }
-    
-    public function getAllAbonnements(): array
+
+    public function listerTous(): array
     {
         return $this->abonnementRepository->findAll();
     }
-    
-    public function getAbonnementById(int $id): ?Abonnement
-    {
-        return $this->abonnementRepository->findById($id);
-    }
-    
-    public function getAbonnementsByAdherent(int $idAdherent): array
+
+    public function historiqueParAdherent(int $idAdherent): array
     {
         return $this->abonnementRepository->findByAdherent($idAdherent);
     }
-    
-    public function getActiveAbonnement(int $idAdherent): ?Abonnement
+
+    /**
+     * Souscrit un nouvel abonnement pour un adhérent.
+     * Si un abonnement actif existe déjà, il est automatiquement résilié
+     * (règle : un seul abonnement actif à la fois).
+     */
+    public function souscrire(array $donnees): int
     {
-        return $this->abonnementRepository->findActiveByAdherent($idAdherent);
-    }
-    
-    public function createAbonnement(Abonnement $abonnement): Abonnement
-    {
-        // Vérifier que l'adhérent existe
-        if (!$this->adherentRepository->findById($abonnement->getIdAdherent())) {
-            throw new RuntimeException('Adhérent non trouvé');
-        }
-        
-        // Vérifier les dates
-        if ($abonnement->getDateFin() <= $abonnement->getDateDebut()) {
-            throw new RuntimeException('La date de fin doit être postérieure à la date de début');
-        }
-        
-        // Vérifier qu'il n'y a pas déjà un abonnement actif
-        $existingActive = $this->abonnementRepository->findActiveByAdherent($abonnement->getIdAdherent());
-        if ($existingActive) {
-            throw new RuntimeException('L\'adhérent possède déjà un abonnement actif');
-        }
-        
-        $id = $this->abonnementRepository->create($abonnement);
-        $abonnement->setIdAbonnement($id);
-        return $abonnement;
-    }
-    
-    public function updateAbonnement(Abonnement $abonnement): bool
-    {
-        // Vérifier les dates
-        if ($abonnement->getDateFin() <= $abonnement->getDateDebut()) {
-            throw new RuntimeException('La date de fin doit être postérieure à la date de début');
-        }
-        
-        return $this->abonnementRepository->update($abonnement);
-    }
-    
-    public function deleteAbonnement(int $id): bool
-    {
-        return $this->abonnementRepository->delete($id);
-    }
-    
-    public function isAbonnementValid(int $idAbonnement, ?string $date = null): bool
-    {
-        $abonnement = $this->abonnementRepository->findById($idAbonnement);
-        if (!$abonnement) {
-            return false;
+        $idAdherent = (int) $donnees['id_adherent'];
+
+        if (!$this->adherentRepository->findById($idAdherent)) {
+            throw new RuntimeException("Adhérent introuvable (id={$idAdherent}).");
         }
 
-        return $abonnement->isValid($date);
-    }
-    
-    public function hasValidAbonnement(int $idAdherent, ?string $date = null): bool
-    {
-        $abonnement = $this->abonnementRepository->findActiveByAdherent($idAdherent);
-        if (!$abonnement) {
-            return false;
+        $type = $donnees['type'];
+        if (!isset(self::DUREES_JOURS[$type])) {
+            throw new InvalidArgumentException("Type d'abonnement invalide : {$type}");
         }
-        
-        return $abonnement->isValid($date);
+
+        $dateDebut = $donnees['date_debut'] ?? date('Y-m-d');
+        $dateFin = $donnees['date_fin'] ?? date('Y-m-d', strtotime($dateDebut . ' + ' . self::DUREES_JOURS[$type] . ' days'));
+
+        // Un adhérent ne peut avoir qu'un seul abonnement actif : on résilie l'ancien
+        $this->abonnementRepository->resilierActifsByAdherent($idAdherent);
+
+        $abonnement = new Abonnement(
+            null,
+            $type,
+            $dateDebut,
+            $dateFin,
+            Abonnement::STATUT_ACTIF,
+            $idAdherent
+        );
+
+        return $this->abonnementRepository->create($abonnement);
+    }
+
+    /**
+     * Vérifie si un adhérent possède un abonnement valide aujourd'hui.
+     * Utilisée par SeanceService avant d'enregistrer une séance.
+     */
+    public function estAdherentValide(int $idAdherent): bool
+    {
+        $abonnement = $this->abonnementRepository->findActifByAdherent($idAdherent);
+        return $abonnement !== null && $abonnement->estValide();
+    }
+
+    public function resilier(int $idAbonnement): bool
+    {
+        return $this->abonnementRepository->updateStatut($idAbonnement, Abonnement::STATUT_RESILIE);
     }
 }

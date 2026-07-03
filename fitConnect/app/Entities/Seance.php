@@ -1,118 +1,79 @@
 <?php
 
-namespace App\Entities;
-
+/**
+ * Entité Seance — représente le passage d'un adhérent
+ * dans une salle pour une activité donnée.
+ */
 class Seance
 {
-    private int $id_seance;
-    private string $date_seance;
-    private int $duree;
-    private int $id_adherent;
-    private int $id_salle;
-    private ?int $id_activite;
-    private ?int $id_equipement;
-    
+    private ?int $idSeance;
+    private int $idAdherent;
+    private int $idSalle;
+    private int $idActivite;
+    private ?int $idEquipement;
+    private int $dureeMinutes;
+    private string $dateSeance;
+
     public function __construct(
-        string $date_seance,
-        int $duree,
-        int $id_adherent,
-        int $id_salle,
-        ?int $id_activite = null,
-        ?int $id_equipement = null,
-        ?int $id_seance = null
+        ?int $idSeance,
+        int $idAdherent,
+        int $idSalle,
+        int $idActivite,
+        ?int $idEquipement,
+        int $dureeMinutes,
+        ?string $dateSeance = null
     ) {
-        $this->date_seance = $date_seance;
-        $this->duree = $duree;
-        $this->id_adherent = $id_adherent;
-        $this->id_salle = $id_salle;
-        $this->id_activite = $id_activite;
-        $this->id_equipement = $id_equipement;
-        $this->id_seance = $id_seance ?? 0;
+        $this->idSeance = $idSeance;
+        $this->idAdherent = $idAdherent;
+        $this->idSalle = $idSalle;
+        $this->idActivite = $idActivite;
+        $this->idEquipement = $idEquipement;
+        $this->setDureeMinutes($dureeMinutes);
+        $this->dateSeance = $dateSeance ?? date('Y-m-d H:i:s');
     }
-    
-    public function getIdSeance(): int
-    {
-        return $this->id_seance;
-    }
-    
-    public function setIdSeance(int $id_seance): void
-    {
-        $this->id_seance = $id_seance;
-    }
-    
-    public function getDateSeance(): string
-    {
-        return $this->date_seance;
-    }
-    
-    public function setDateSeance(string $date_seance): void
-    {
-        $this->date_seance = $date_seance;
-    }
-    
-    public function getDuree(): int
-    {
-        return $this->duree;
-    }
-    
-    public function setDuree(int $duree): void
+
+    // ---- Getters ----
+    public function getIdSeance(): ?int { return $this->idSeance; }
+    public function getIdAdherent(): int { return $this->idAdherent; }
+    public function getIdSalle(): int { return $this->idSalle; }
+    public function getIdActivite(): int { return $this->idActivite; }
+    public function getIdEquipement(): ?int { return $this->idEquipement; }
+    public function getDureeMinutes(): int { return $this->dureeMinutes; }
+    public function getDateSeance(): string { return $this->dateSeance; }
+
+    public function setDureeMinutes(int $duree): void
     {
         if ($duree <= 0) {
-            throw new \InvalidArgumentException('La durée doit être positive');
+            throw new InvalidArgumentException('La durée d\'une séance doit être positive.');
         }
-        $this->duree = $duree;
+        $this->dureeMinutes = $duree;
     }
-    
-    public function getIdAdherent(): int
+
+    public function setIdSeance(int $id): void { $this->idSeance = $id; }
+
+    public static function fromArray(array $row): self
     {
-        return $this->id_adherent;
+        return new self(
+            (int) $row['id_seance'],
+            (int) $row['id_adherent'],
+            (int) $row['id_salle'],
+            (int) $row['id_activite'],
+            isset($row['id_equipement']) ? (int) $row['id_equipement'] : null,
+            (int) $row['duree_minutes'],
+            $row['date_seance']
+        );
     }
-    
-    public function setIdAdherent(int $id_adherent): void
-    {
-        $this->id_adherent = $id_adherent;
-    }
-    
-    public function getIdSalle(): int
-    {
-        return $this->id_salle;
-    }
-    
-    public function setIdSalle(int $id_salle): void
-    {
-        $this->id_salle = $id_salle;
-    }
-    
-    public function getIdActivite(): ?int
-    {
-        return $this->id_activite;
-    }
-    
-    public function setIdActivite(?int $id_activite): void
-    {
-        $this->id_activite = $id_activite;
-    }
-    
-    public function getIdEquipement(): ?int
-    {
-        return $this->id_equipement;
-    }
-    
-    public function setIdEquipement(?int $id_equipement): void
-    {
-        $this->id_equipement = $id_equipement;
-    }
-    
+
     public function toArray(): array
     {
         return [
-            'id_seance' => $this->id_seance,
-            'date_seance' => $this->date_seance,
-            'duree' => $this->duree,
-            'id_adherent' => $this->id_adherent,
-            'id_salle' => $this->id_salle,
-            'id_activite' => $this->id_activite,
-            'id_equipement' => $this->id_equipement
+            'id_seance'     => $this->idSeance,
+            'id_adherent'   => $this->idAdherent,
+            'id_salle'      => $this->idSalle,
+            'id_activite'   => $this->idActivite,
+            'id_equipement' => $this->idEquipement,
+            'duree_minutes' => $this->dureeMinutes,
+            'date_seance'   => $this->dateSeance,
         ];
     }
 }

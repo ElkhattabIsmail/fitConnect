@@ -1,139 +1,134 @@
 <?php
 
-require_once __DIR__ . '/../config/Database.php';
+/**
+ * public/test.php — teste rapidement chaque couche de l'application
+ * indépendamment de l'interface utilisateur.
+ *
+ * Utilisation : php public/test.php   (en ligne de commande)
+ *           ou : http://localhost/fitconnect/public/test.php (navigateur)
+ */
 
-spl_autoload_register(function ($class) {
-    $file = __DIR__ . '/../app/' . str_replace(['App\\', '\\'], ['', '/'], $class) . '.php';
-    if (file_exists($file)) {
-        require $file;
+declare(strict_types=1);
+
+spl_autoload_register(function (string $class): void {
+    $dirs = [
+        __DIR__ . '/../config/',
+        __DIR__ . '/../app/Entities/',
+        __DIR__ . '/../app/Repositories/',
+        __DIR__ . '/../app/Services/',
+        __DIR__ . '/../app/Controllers/',
+    ];
+    foreach ($dirs as $dir) {
+        $file = $dir . $class . '.php';
+        if (file_exists($file)) {
+            require_once $file;
+            return;
+        }
     }
 });
 
-echo "<h1>FitConnect - Tests des couches</h1>";
-echo "<hr>";
-
-// Test 1: Connexion à la base de données
-echo "<h2>Test 1: Connexion à la base de données</h2>";
-try {
-    $db = \Config\Database::getConnection();
-    echo "<p style='color: green;'>✓ Connexion réussie</p>";
-} catch (Exception $e) {
-    echo "<p style='color: red;'>✗ Erreur de connexion: " . $e->getMessage() . "</p>";
+function titre(string $t): void
+{
+    echo "\n=== {$t} ===\n";
 }
 
-// Test 2: Création d'une entité Adherent
-echo "<h2>Test 2: Création d'une entité Adherent</h2>";
-try {
-    $adherent = new \App\Entities\Adherent(
-        'Test',
-        'Utilisateur',
-        'test@example.com',
-        date('Y-m-d'),
-        1,
-        '0612345678'
-    );
-    echo "<p style='color: green;'>✓ Entité Adherent créée: " . $adherent->getNom() . " " . $adherent->getPrenom() . "</p>";
-} catch (Exception $e) {
-    echo "<p style='color: red;'>✗ Erreur: " . $e->getMessage() . "</p>";
+function ok(string $label, bool $condition): void
+{
+    echo ($condition ? '[OK]   ' : '[FAIL] ') . $label . "\n";
 }
 
-// Test 3: Création d'une entité Abonnement
-echo "<h2>Test 3: Création d'une entité Abonnement</h2>";
+// ---- 1. Test de la connexion PDO ----
+titre('Connexion base de données');
 try {
-    $abonnement = new \App\Entities\Abonnement(
-        'mensuel',
-        '2024-06-01',
-        '2024-07-01',
-        1
-    );
-    echo "<p style='color: green;'>✓ Entité Abonnement créée: " . $abonnement->getTypeAbonnement() . "</p>";
-    echo "<p>Validité: " . ($abonnement->isValid() ? 'Valide' : 'Expiré') . "</p>";
-} catch (Exception $e) {
-    echo "<p style='color: red;'>✗ Erreur: " . $e->getMessage() . "</p>";
+    $pdo = Database::getConnection();
+    ok('Connexion PDO établie', $pdo instanceof PDO);
+} catch (Throwable $e) {
+    ok('Connexion PDO établie', false);
+    die("Erreur : " . $e->getMessage() . "\n");
 }
 
-// Test 4: Création d'une entité Seance
-echo "<h2>Test 4: Création d'une entité Seance</h2>";
+// ---- 2. Test de la couche Entities ----
+titre('Couche Entities');
 try {
-    $seance = new \App\Entities\Seance(
-        '2024-06-20 10:00:00',
-        60,
-        1,
-        1,
-        1,
-        1
-    );
-    echo "<p style='color: green;'>✓ Entité Seance créée: Durée " . $seance->getDuree() . " minutes</p>";
-} catch (Exception $e) {
-    echo "<p style='color: red;'>✗ Erreur: " . $e->getMessage() . "</p>";
+    $adherentTest = new Adherent(null, 'Test', 'Unitaire', 'test.unitaire@mail.com', '0600000000', '1990-01-01', date('Y-m-d'), 1);
+    ok('Création entité Adherent', $adherentTest->getNomComplet() === 'Unitaire Test');
+
+    $abonnementTest = new Abonnement(null, 'mensuel', '2026-01-01', '2026-12-31', 'actif', 1);
+    ok('Abonnement valide au 2026-06-15', $abonnementTest->estValide('2026-06-15'));
+    ok('Abonnement invalide au 2027-01-01', !$abonnementTest->estValide('2027-01-01'));
+} catch (Throwable $e) {
+    echo "Erreur couche Entities : " . $e->getMessage() . "\n";
 }
 
-// Test 5: Repository - Récupérer tous les adhérents
-echo "<h2>Test 5: Repository - Récupérer tous les adhérents</h2>";
+// ---- 3. Test de la couche Repositories ----
+titre('Couche Repositories');
+$adherentRepository   = new AdherentRepository($pdo);
+$abonnementRepository = new AbonnementRepository($pdo);
+$seanceRepository     = new SeanceRepository($pdo);
+$salleRepository      = new SalleRepository($pdo);
+
 try {
-    $adherentRepo = new \App\Repositories\AdherentRepository();
-    $adherents = $adherentRepo->findAll();
-    echo "<p style='color: green;'>✓ " . count($adherents) . " adhérent(s) trouvé(s)</p>";
-    foreach ($adherents as $adh) {
-        echo "<p>- " . $adh->getNom() . " " . $adh->getPrenom() . " (" . $adh->getEmail() . ")</p>";
+    $salles = $salleRepository->findAll();
+    ok('Lecture des 4 salles du réseau', count($salles) === 4);
+
+    $adherents = $adherentRepository->findAll();
+    ok('Lecture de la liste des adhérents (>=0)', is_array($adherents));
+
+    $totalSeances = $seanceRepository->countTotal();
+    ok('Comptage des séances', is_int($totalSeances));
+} catch (Throwable $e) {
+    echo "Erreur couche Repositories : " . $e->getMessage() . "\n";
+}
+
+// ---- 4. Test de la couche Services ----
+titre('Couche Services (règles de gestion)');
+$adherentService   = new AdherentService($adherentRepository);
+$abonnementService = new AbonnementService($abonnementRepository, $adherentRepository);
+$seanceService      = new SeanceService($seanceRepository, $abonnementService, $adherentRepository);
+
+try {
+    // Test : inscription d'un adhérent de test
+    $emailTest = 'test.' . time() . '@fitconnect.com';
+    $idNouvelAdherent = $adherentService->inscrire([
+        'nom' => 'Dupont', 'prenom' => 'Jean', 'email' => $emailTest,
+        'telephone' => '0600000001', 'date_naissance' => '1992-04-10',
+        'date_inscription' => date('Y-m-d'), 'id_salle' => 1,
+    ]);
+    ok('Inscription d\'un nouvel adhérent', $idNouvelAdherent > 0);
+
+    // Test : une séance sans abonnement actif doit être refusée (RG3)
+    $seanceRefusee = false;
+    try {
+        $seanceService->enregistrer([
+            'id_adherent' => $idNouvelAdherent, 'id_salle' => 1, 'id_activite' => 1, 'duree_minutes' => 30,
+        ]);
+    } catch (RuntimeException $e) {
+        $seanceRefusee = true;
     }
-} catch (Exception $e) {
-    echo "<p style='color: red;'>✗ Erreur: " . $e->getMessage() . "</p>";
-}
+    ok('Séance refusée sans abonnement actif (RG3)', $seanceRefusee);
 
-// Test 6: Repository - Récupérer tous les abonnements
-echo "<h2>Test 6: Repository - Récupérer tous les abonnements</h2>";
-try {
-    $abonnementRepo = new \App\Repositories\AbonnementRepository();
-    $abonnements = $abonnementRepo->findAll();
-    echo "<p style='color: green;'>✓ " . count($abonnements) . " abonnement(s) trouvé(s)</p>";
-    foreach ($abonnements as $abo) {
-        echo "<p>- " . $abo->getTypeAbonnement() . " (Adhérent ID: " . $abo->getIdAdherent() . ")</p>";
+    // Test : souscription d'un abonnement puis séance acceptée
+    $abonnementService->souscrire([
+        'id_adherent' => $idNouvelAdherent, 'type' => 'mensuel', 'date_debut' => date('Y-m-d'),
+    ]);
+    ok('Abonnement valide après souscription', $abonnementService->estAdherentValide($idNouvelAdherent));
+
+    $idSeance = $seanceService->enregistrer([
+        'id_adherent' => $idNouvelAdherent, 'id_salle' => 1, 'id_activite' => 1, 'duree_minutes' => 45,
+    ]);
+    ok('Séance acceptée avec abonnement actif', $idSeance > 0);
+
+    // Test : suppression interdite car l'adhérent a une séance (RG5)
+    $suppressionBloquee = false;
+    try {
+        $adherentService->supprimer($idNouvelAdherent);
+    } catch (RuntimeException $e) {
+        $suppressionBloquee = true;
     }
-} catch (Exception $e) {
-    echo "<p style='color: red;'>✗ Erreur: " . $e->getMessage() . "</p>";
+    ok('Suppression bloquée (adhérent avec séance) — RG5', $suppressionBloquee);
+
+} catch (Throwable $e) {
+    echo "Erreur couche Services : " . $e->getMessage() . "\n";
 }
 
-// Test 7: Repository - Récupérer toutes les séances
-echo "<h2>Test 7: Repository - Récupérer toutes les séances</h2>";
-try {
-    $seanceRepo = new \App\Repositories\SeanceRepository();
-    $seances = $seanceRepo->findAll();
-    echo "<p style='color: green;'>✓ " . count($seances) . " séance(s) trouvée(s)</p>";
-    foreach ($seances as $sea) {
-        echo "<p>- " . $sea->getDateSeance() . " (" . $sea->getDuree() . " min)</p>";
-    }
-} catch (Exception $e) {
-    echo "<p style='color: red;'>✗ Erreur: " . $e->getMessage() . "</p>";
-}
-
-// Test 8: Service - Vérifier la validité d'un abonnement
-echo "<h2>Test 8: Service - Vérifier la validité d'un abonnement</h2>";
-try {
-    $abonnementService = new \App\Services\AbonnementService();
-    $abonnements = $abonnementService->getAllAbonnements();
-    if (!empty($abonnements)) {
-        $firstAbonnement = $abonnements[0];
-        $isValid = $abonnementService->isAbonnementValid($firstAbonnement->getIdAbonnement());
-        echo "<p style='color: green;'>✓ Abonnement ID " . $firstAbonnement->getIdAbonnement() . ": " . ($isValid ? 'Valide' : 'Expiré') . "</p>";
-    } else {
-        echo "<p style='color: orange;'>⚠ Aucun abonnement trouvé</p>";
-    }
-} catch (Exception $e) {
-    echo "<p style='color: red;'>✗ Erreur: " . $e->getMessage() . "</p>";
-}
-
-// Test 9: Service - Statistiques des séances
-echo "<h2>Test 9: Service - Statistiques des séances</h2>";
-try {
-    $seanceService = new \App\Services\SeanceService();
-    $stats = $seanceService->getSeanceStats();
-    echo "<p style='color: green;'>✓ Statistiques récupérées</p>";
-    echo "<p>- Total séances: " . $stats['total_seances'] . "</p>";
-    echo "<p>- Durée totale: " . $stats['total_duree'] . " minutes</p>";
-} catch (Exception $e) {
-    echo "<p style='color: red;'>✗ Erreur: " . $e->getMessage() . "</p>";
-}
-
-echo "<hr>";
-echo "<h2>Tests terminés</h2>";
+titre('Fin des tests');

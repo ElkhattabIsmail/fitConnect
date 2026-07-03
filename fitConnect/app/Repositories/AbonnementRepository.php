@@ -1,158 +1,87 @@
 <?php
 
-namespace App\Repositories;
-
-use App\Entities\Abonnement;
-use Config\Database;
-use PDO;
-
+/**
+ * AbonnementRepository — accès aux données de la table `abonnements`.
+ */
 class AbonnementRepository
 {
-    private PDO $db;
-    
-    public function __construct()
+    private PDO $pdo;
+
+    public function __construct(PDO $pdo)
     {
-        $this->db = Database::getConnection();
+        $this->pdo = $pdo;
     }
-    
+
     public function findAll(): array
     {
-        $stmt = $this->db->query('
-            SELECT a.*, ad.nom, ad.prenom 
-            FROM ABONNEMENT a 
-            LEFT JOIN ADHERENT ad ON a.id_adherent = ad.id_adherent 
-            ORDER BY a.date_debut DESC
-        ');
-        
-        $abonnements = [];
-        while ($row = $stmt->fetch()) {
-            $abonnement = new Abonnement(
-                $row['type_abonnement'],
-                $row['date_debut'],
-                $row['date_fin'],
-                $row['id_adherent'],
-                $row['id_abonnement']
-            );
-            $abonnements[] = $abonnement;
-        }
-        
-        return $abonnements;
+        $stmt = $this->pdo->query('SELECT * FROM abonnements ORDER BY date_debut DESC');
+        return array_map(fn($row) => Abonnement::fromArray($row), $stmt->fetchAll());
     }
-    
+
     public function findById(int $id): ?Abonnement
     {
-        $stmt = $this->db->prepare('
-            SELECT a.*, ad.nom, ad.prenom 
-            FROM ABONNEMENT a 
-            LEFT JOIN ADHERENT ad ON a.id_adherent = ad.id_adherent 
-            WHERE a.id_abonnement = :id
-        ');
+        $stmt = $this->pdo->prepare('SELECT * FROM abonnements WHERE id_abonnement = :id');
         $stmt->execute(['id' => $id]);
         $row = $stmt->fetch();
-        
-        if (!$row) {
-            return null;
-        }
-        
-        return new Abonnement(
-            $row['type_abonnement'],
-            $row['date_debut'],
-            $row['date_fin'],
-            $row['id_adherent'],
-            $row['id_abonnement']
-        );
+        return $row ? Abonnement::fromArray($row) : null;
     }
-    
+
+    /**
+     * Récupère l'abonnement actif courant d'un adhérent (s'il existe).
+     */
+    public function findActifByAdherent(int $idAdherent): ?Abonnement
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT * FROM abonnements
+             WHERE id_adherent = :id AND statut = 'actif'
+             ORDER BY date_fin DESC LIMIT 1"
+        );
+        $stmt->execute(['id' => $idAdherent]);
+        $row = $stmt->fetch();
+        return $row ? Abonnement::fromArray($row) : null;
+    }
+
     public function findByAdherent(int $idAdherent): array
     {
-        $stmt = $this->db->prepare('
-            SELECT * 
-            FROM ABONNEMENT 
-            WHERE id_adherent = :idAdherent 
-            ORDER BY date_debut DESC
-        ');
-        $stmt->execute(['idAdherent' => $idAdherent]);
-        
-        $abonnements = [];
-        while ($row = $stmt->fetch()) {
-            $abonnement = new Abonnement(
-                $row['type_abonnement'],
-                $row['date_debut'],
-                $row['date_fin'],
-                $row['id_adherent'],
-                $row['id_abonnement']
-            );
-            $abonnements[] = $abonnement;
-        }
-        
-        return $abonnements;
-    }
-    
-    public function findActiveByAdherent(int $idAdherent): ?Abonnement
-    {
-        $stmt = $this->db->prepare('
-            SELECT * 
-            FROM ABONNEMENT 
-            WHERE id_adherent = :idAdherent 
-            AND date_debut <= CURDATE() 
-            AND date_fin >= CURDATE()
-            ORDER BY date_fin DESC 
-            LIMIT 1
-        ');
-        $stmt->execute(['idAdherent' => $idAdherent]);
-        $row = $stmt->fetch();
-        
-        if (!$row) {
-            return null;
-        }
-        
-        return new Abonnement(
-            $row['type_abonnement'],
-            $row['date_debut'],
-            $row['date_fin'],
-            $row['id_adherent'],
-            $row['id_abonnement']
+        $stmt = $this->pdo->prepare(
+            'SELECT * FROM abonnements WHERE id_adherent = :id ORDER BY date_debut DESC'
         );
+        $stmt->execute(['id' => $idAdherent]);
+        return array_map(fn($row) => Abonnement::fromArray($row), $stmt->fetchAll());
     }
-    
+
     public function create(Abonnement $abonnement): int
     {
-        $stmt = $this->db->prepare('
-            INSERT INTO ABONNEMENT (type_abonnement, date_debut, date_fin, id_adherent)
-            VALUES (:type_abonnement, :date_debut, :date_fin, :id_adherent)
-        ');
-        
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO abonnements (type, date_debut, date_fin, statut, id_adherent)
+             VALUES (:type, :date_debut, :date_fin, :statut, :id_adherent)'
+        );
         $stmt->execute([
-            'type_abonnement' => $abonnement->getTypeAbonnement(),
-            'date_debut' => $abonnement->getDateDebut(),
-            'date_fin' => $abonnement->getDateFin(),
-            'id_adherent' => $abonnement->getIdAdherent()
+            'type'        => $abonnement->getType(),
+            'date_debut'  => $abonnement->getDateDebut(),
+            'date_fin'    => $abonnement->getDateFin(),
+            'statut'      => $abonnement->getStatut(),
+            'id_adherent' => $abonnement->getIdAdherent(),
         ]);
-        
-        return (int) $this->db->lastInsertId();
+        return (int) $this->pdo->lastInsertId();
     }
-    
-    public function update(Abonnement $abonnement): bool
+
+    /**
+     * Passe tous les abonnements actifs d'un adhérent à "résilié"
+     * (utilisé avant de souscrire un nouvel abonnement).
+     */
+    public function resilierActifsByAdherent(int $idAdherent): bool
     {
-        $stmt = $this->db->prepare('
-            UPDATE ABONNEMENT 
-            SET type_abonnement = :type_abonnement, 
-                date_debut = :date_debut, 
-                date_fin = :date_fin
-            WHERE id_abonnement = :id
-        ');
-        
-        return $stmt->execute([
-            'type_abonnement' => $abonnement->getTypeAbonnement(),
-            'date_debut' => $abonnement->getDateDebut(),
-            'date_fin' => $abonnement->getDateFin(),
-            'id' => $abonnement->getIdAbonnement()
-        ]);
+        $stmt = $this->pdo->prepare(
+            "UPDATE abonnements SET statut = 'resilie'
+             WHERE id_adherent = :id AND statut = 'actif'"
+        );
+        return $stmt->execute(['id' => $idAdherent]);
     }
-    
-    public function delete(int $id): bool
+
+    public function updateStatut(int $id, string $statut): bool
     {
-        $stmt = $this->db->prepare('DELETE FROM ABONNEMENT WHERE id_abonnement = :id');
-        return $stmt->execute(['id' => $id]);
+        $stmt = $this->pdo->prepare('UPDATE abonnements SET statut = :statut WHERE id_abonnement = :id');
+        return $stmt->execute(['statut' => $statut, 'id' => $id]);
     }
 }

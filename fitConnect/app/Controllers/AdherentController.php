@@ -1,116 +1,67 @@
 <?php
 
-namespace App\Controllers;
-
-use App\Services\AdherentService;
-use App\Entities\Adherent;
-use Exception;
-
+/**
+ * AdherentController — orchestre AdherentService, SalleRepository
+ * et les vues pour tout ce qui concerne les adhérents.
+ */
 class AdherentController
 {
     private AdherentService $adherentService;
-    private string $baseUrl;
-    
-    public function __construct()
+    private SalleRepository $salleRepository;
+
+    public function __construct(AdherentService $adherentService, SalleRepository $salleRepository)
     {
-        $this->adherentService = new AdherentService();
-        $this->baseUrl = $_SERVER['SCRIPT_NAME'];
+        $this->adherentService = $adherentService;
+        $this->salleRepository = $salleRepository;
     }
-    
+
+    /** GET /?page=adherents */
     public function index(): void
     {
-        global $baseUrl;
-        $baseUrl = $this->baseUrl;
-        $adherents = $this->adherentService->getAllAdherents();
+        $adherents = $this->adherentService->listerTous();
+        $salles = $this->salleRepository->findAll();
+        // index par id pour affichage rapide du nom de salle dans la vue
+        $sallesParId = [];
+        foreach ($salles as $s) {
+            $sallesParId[$s['id_salle']] = $s['nom'];
+        }
+
         require __DIR__ . '/../../views/adherents/index.php';
     }
-    
+
+    /** GET /?page=adherents&action=create */
     public function create(): void
     {
-        global $baseUrl;
-        $baseUrl = $this->baseUrl;
-        
-        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-            try {
-                $adherent = new Adherent(
-                    $_POST['nom'],
-                    $_POST['prenom'],
-                    $_POST['email'],
-                    $_POST['date_inscription'],
-                    (int) $_POST['id_salle'],
-                    $_POST['telephone'] ?? null
-                );
-                
-                $this->adherentService->createAdherent($adherent);
-                header('Location: ' . $this->baseUrl . '?route=adherents');
-                exit;
-            } catch (Exception $e) {
-                $error = $e->getMessage();
-            }
-        }
-        
+        $salles = $this->salleRepository->findAll();
+        $erreur = null;
         require __DIR__ . '/../../views/adherents/create.php';
     }
-    
-    public function edit(int $id): void
+
+    /** POST /?page=adherents&action=store */
+    public function store(): void
     {
-        global $baseUrl;
-        $baseUrl = $this->baseUrl;
-        
-        $adherent = $this->adherentService->getAdherentById($id);
-        
-        if (!$adherent) {
-            header('Location: ' . $this->baseUrl . '?route=adherents');
+        $salles = $this->salleRepository->findAll();
+        $erreur = null;
+
+        try {
+            $this->adherentService->inscrire($_POST);
+            header('Location: index.php?page=adherents&success=1');
             exit;
+        } catch (Throwable $e) {
+            $erreur = $e->getMessage();
+            require __DIR__ . '/../../views/adherents/create.php';
         }
-        
-        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-            try {
-                $adherent->setNom($_POST['nom']);
-                $adherent->setPrenom($_POST['prenom']);
-                $adherent->setEmail($_POST['email']);
-                $adherent->setTelephone($_POST['telephone'] ?? null);
-                $adherent->setIdSalle((int) $_POST['id_salle']);
-                
-                $this->adherentService->updateAdherent($adherent);
-                header('Location: ' . $this->baseUrl . '?route=adherents');
-                exit;
-            } catch (Exception $e) {
-                $error = $e->getMessage();
-            }
-        }
-        
-        require __DIR__ . '/../../views/adherents/edit.php';
     }
-    
+
+    /** POST /?page=adherents&action=delete&id=X */
     public function delete(int $id): void
     {
-        global $baseUrl;
-        $baseUrl = $this->baseUrl;
-        
         try {
-            $this->adherentService->deleteAdherent($id);
-            header('Location: ' . $this->baseUrl . '?route=adherents');
-            exit;
-        } catch (Exception $e) {
-            $error = $e->getMessage();
-            $adherents = $this->adherentService->getAllAdherents();
-            require __DIR__ . '/../../views/adherents/index.php';
+            $this->adherentService->supprimer($id);
+            header('Location: index.php?page=adherents&success=2');
+        } catch (Throwable $e) {
+            header('Location: index.php?page=adherents&error=' . urlencode($e->getMessage()));
         }
-    }
-    
-    public function show(int $id): void
-    {
-        global $baseUrl;
-        $baseUrl = $this->baseUrl;
-        
-        $data = $this->adherentService->getAdherentWithActiveAbonnement($id);
-        
-        if (!$data) {
-            header('Location: ' . $this->baseUrl . '?route=adherents');
-            exit;
-        }
-        
-        require __DIR__ . '/../../views/adherents/show.php';
+        exit;
     }
 }

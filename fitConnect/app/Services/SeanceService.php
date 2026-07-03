@@ -1,108 +1,76 @@
 <?php
 
-namespace App\Services;
-
-use App\Entities\Seance;
-use App\Repositories\SeanceRepository;
-use App\Repositories\AbonnementRepository;
-use App\Repositories\AdherentRepository;
-
+/**
+ * SeanceService — applique la règle de gestion centrale :
+ * "une séance ne peut être enregistrée que si l'abonnement
+ * de l'adhérent est valide à la date du jour".
+ */
 class SeanceService
 {
     private SeanceRepository $seanceRepository;
-    private AbonnementRepository $abonnementRepository;
+    private AbonnementService $abonnementService;
     private AdherentRepository $adherentRepository;
-    
-    public function __construct()
-    {
-        $this->seanceRepository = new SeanceRepository();
-        $this->abonnementRepository = new AbonnementRepository();
-        $this->adherentRepository = new AdherentRepository();
+
+    public function __construct(
+        SeanceRepository $seanceRepository,
+        AbonnementService $abonnementService,
+        AdherentRepository $adherentRepository
+    ) {
+        $this->seanceRepository = $seanceRepository;
+        $this->abonnementService = $abonnementService;
+        $this->adherentRepository = $adherentRepository;
     }
-    
-    public function getAllSeances(): array
+
+    public function listerToutes(int $limit = 50): array
     {
-        return $this->seanceRepository->findAll();
+        return $this->seanceRepository->findAllDetaillees($limit);
     }
-    
-    public function getSeanceById(int $id): ?Seance
-    {
-        return $this->seanceRepository->findById($id);
-    }
-    
-    public function getSeancesByAdherent(int $idAdherent): array
+
+    public function historiqueParAdherent(int $idAdherent): array
     {
         return $this->seanceRepository->findByAdherent($idAdherent);
     }
-    
-    public function getSeancesBySalle(int $idSalle): array
+
+    /**
+     * Enregistre une séance après vérification de la validité
+     * de l'abonnement de l'adhérent.
+     *
+     * @throws RuntimeException si l'adhérent n'existe pas ou son abonnement n'est pas valide
+     */
+    public function enregistrer(array $donnees): int
     {
-        return $this->seanceRepository->findBySalle($idSalle);
-    }
-    
-    public function createSeance(Seance $seance): Seance
-    {
-        // Vérifier que l'adhérent existe
-        if (!$this->adherentRepository->findById($seance->getIdAdherent())) {
-            throw new RuntimeException('Adhérent non trouvé');
+        $idAdherent = (int) $donnees['id_adherent'];
+
+        if (!$this->adherentRepository->findById($idAdherent)) {
+            throw new RuntimeException("Adhérent introuvable (id={$idAdherent}).");
         }
-        
-        // Vérifier que l'adhérent a un abonnement valide à la date de la séance
-        $seanceDate = substr($seance->getDateSeance(), 0, 10); // Extraire la date YYYY-MM-DD
-        if (!$this->abonnementRepository->findActiveByAdherent($seance->getIdAdherent())) {
-            throw new RuntimeException('L\'adhérent n\'a pas d\'abonnement actif');
+
+        if (!$this->abonnementService->estAdherentValide($idAdherent)) {
+            throw new RuntimeException(
+                "Séance refusée : l'abonnement de cet adhérent n'est pas valide à la date du jour."
+            );
         }
-        
-        $activeAbonnement = $this->abonnementRepository->findActiveByAdherent($seance->getIdAdherent());
-        if (!$activeAbonnement->isValid($seanceDate)) {
-            throw new RuntimeException('L\'abonnement n\'est pas valide à la date de la séance');
-        }
-        
-        $id = $this->seanceRepository->create($seance);
-        $seance->setIdSeance($id);
-        return $seance;
+
+        $seance = new Seance(
+            null,
+            $idAdherent,
+            (int) $donnees['id_salle'],
+            (int) $donnees['id_activite'],
+            isset($donnees['id_equipement']) && $donnees['id_equipement'] !== ''
+                ? (int) $donnees['id_equipement']
+                : null,
+            (int) $donnees['duree_minutes'],
+            $donnees['date_seance'] ?? date('Y-m-d H:i:s')
+        );
+
+        return $this->seanceRepository->create($seance);
     }
-    
-    public function updateSeance(Seance $seance): bool
+
+    public function statistiquesGlobales(): array
     {
-        return $this->seanceRepository->update($seance);
-    }
-    
-    public function deleteSeance(int $id): bool
-    {
-        return $this->seanceRepository->delete($id);
-    }
-    
-    public function getSeanceStats(): array
-    {
-        $seances = $this->seanceRepository->findAll();
-        
-        $totalSeances = count($seances);
-        $totalDuree = 0;
-        $seancesByAdherent = [];
-        $seancesBySalle = [];
-        
-        foreach ($seances as $seance) {
-            $totalDuree += $seance->getDuree();
-            
-            $idAdherent = $seance->getIdAdherent();
-            if (!isset($seancesByAdherent[$idAdherent])) {
-                $seancesByAdherent[$idAdherent] = 0;
-            }
-            $seancesByAdherent[$idAdherent]++;
-            
-            $idSalle = $seance->getIdSalle();
-            if (!isset($seancesBySalle[$idSalle])) {
-                $seancesBySalle[$idSalle] = 0;
-            }
-            $seancesBySalle[$idSalle]++;
-        }
-        
         return [
-            'total_seances' => $totalSeances,
-            'total_duree' => $totalDuree,
-            'seances_by_adherent' => $seancesByAdherent,
-            'seances_by_salle' => $seancesBySalle
+            'total_seances'    => $this->seanceRepository->countTotal(),
+            'seances_par_mois' => $this->seanceRepository->countByMonth(),
         ];
     }
 }

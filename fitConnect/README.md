@@ -1,183 +1,76 @@
-# FitConnect - Système de Gestion de Réseau de Salles de Sport
+# FitConnect — Backend PHP OOP (PDO + MySQL)
 
-FitConnect est une application backend PHP permettant de gérer le réseau de 4 salles de sport du réseau FitConnect. L'application permet d'enregistrer les adhérents, leurs abonnements et leurs séances de sport.
+Application backend pour la gestion du réseau de salles de sport FitConnect
+(adhérents, abonnements, activités, équipements), développée en PHP orienté
+objet avec une architecture en couches et une connexion PDO sécurisée.
 
 ## Architecture
-
-L'application suit une architecture en couches strictement séparées :
-
-- **Entities** (`app/Entities/`) : Classes métier représentant les entités du domaine
-- **Repositories** (`app/Repositories/`) : Couche d'accès aux données avec PDO
-- **Services** (`app/Services/`) : Couche métier contenant les règles de gestion
-- **Controllers** (`app/Controllers/`) : Orchestration des services et repositories
-- **Views** (`views/`) : Vues HTML/PHP pour l'affichage des données
-
-## Structure du Projet
 
 ```
 fitconnect/
 ├── config/
-│   └── Database.php              # Connexion PDO singleton
+│   └── Database.php          # Connexion PDO centralisée (Singleton)
 ├── app/
-│   ├── Entities/                  # Couche métier
-│   │   ├── Adherent.php
-│   │   ├── Abonnement.php
-│   │   └── Seance.php
-│   ├── Repositories/              # Accès aux données
-│   │   ├── AdherentRepository.php
-│   │   ├── AbonnementRepository.php
-│   │   └── SeanceRepository.php
-│   ├── Services/                  # Règles métier
-│   │   ├── AdherentService.php
-│   │   ├── AbonnementService.php
-│   │   └── SeanceService.php
-│   └── Controllers/               # Orchestration
-│       ├── AdherentController.php
-│       ├── AbonnementController.php
-│       └── SeanceController.php
-├── views/                         # Vues HTML/PHP
-│   ├── adherents/
-│   │   ├── index.php
-│   │   ├── create.php
-│   │   ├── edit.php
-│   │   └── show.php
-│   ├── abonnements/
-│   │   ├── index.php
-│   │   ├── create.php
-│   │   ├── edit.php
-│   │   └── show.php
-│   └── dashboard/
-│       ├── index.php
-│       ├── create.php
-│       ├── edit.php
-│       └── show.php
-├── database/                      # Scripts SQL
-│   ├── fitconnect_mcd.looping     # Modèle Conceptuel de Données
-│   ├── fitconnect_mld.md          # Modèle Logique de Données
-│   └── fitconnect.sql             # Script de création de la base
-├── public/
-│   ├── index.php                  # Point d'entrée unique
-│   └── test.php                   # Tests des couches
-├── .gitignore
-└── README.md
+│   ├── Entities/              # Adherent, Abonnement, Seance (encapsulation stricte)
+│   ├── Repositories/          # Accès aux données — requêtes PDO paramétrées uniquement
+│   ├── Services/               # Logique métier (règles de gestion), indépendante des Repositories
+│   └── Controllers/           # Orchestration Services + Repositories -> Vues
+├── views/                      # Vues HTML/PHP (adherents, abonnements, seances, dashboard)
+├── database/
+│   ├── MCD-MLD.md              # Conception Merise (MCD + MLD + normalisation)
+│   ├── schema.sql               # Script de création de la base (à partir du MLD)
+│   └── seed.sql                 # Jeu de données de test
+└── public/
+    ├── index.php                # Point d'entrée unique (routeur)
+    ├── test.php                  # Tests manuels des couches (Entities/Repositories/Services)
+    └── assets/css/style.css      # Design violet / noir
 ```
 
 ## Installation
 
-### Prérequis
+1. Créer la base de données :
+   ```bash
+   mysql -u root -p < database/schema.sql
+   mysql -u root -p < database/seed.sql
+   ```
+2. Configurer les identifiants de connexion dans `config/Database.php`
+   (variables `$host`, `$dbname`, `$user`, `$pass`).
+3. Servir le dossier `public/` avec un serveur PHP :
+   ```bash
+   php -S localhost:8000 -t public
+   ```
+4. Ouvrir `http://localhost:8000` dans le navigateur.
 
-- PHP 7.4 ou supérieur
-- MySQL 5.7 ou supérieur
-- Serveur web (Apache, Nginx, etc.)
+## Tester les couches indépendamment de l'UI
 
-### Configuration de la base de données
-
-1. Importez le fichier SQL dans MySQL :
 ```bash
-mysql -u root -p < database/fitconnect.sql
+php public/test.php
 ```
+Ce script vérifie : la connexion PDO, les entités (validation métier), les
+repositories (lecture des données), et les services (règles de gestion RG1 à RG5).
 
-2. Modifiez les paramètres de connexion dans `config/Database.php` si nécessaire :
-```php
-private const HOST = 'localhost';
-private const DB_NAME = 'fitconnect';
-private const USERNAME = 'root';
-private const PASSWORD = '';
-```
+## Règles de gestion appliquées
 
-### Configuration du serveur web
+- **RG1** — Un adhérent appartient à une seule salle d'inscription.
+- **RG2** — Un adhérent ne détient qu'un seul abonnement actif à la fois
+  (`AbonnementService::souscrire` résilie automatiquement l'ancien abonnement actif).
+- **RG3** — Une séance n'est enregistrée que si l'abonnement de l'adhérent est
+  valide à la date du jour (`SeanceService::enregistrer`).
+- **RG4** — Une séance référence obligatoirement adhérent, salle, activité ;
+  l'équipement est optionnel.
+- **RG5** — Un adhérent avec des séances enregistrées ou un abonnement en cours
+  ne peut pas être supprimé (`AdherentService::supprimer`).
 
-Configurez votre serveur web pour pointer vers le dossier `public/` comme document root.
+Toutes les requêtes SQL sont exclusivement paramétrées (PDO prepared statements)
+afin de prévenir les injections SQL.
 
-Pour Apache, vous pouvez utiliser un VirtualHost :
-```apache
-<VirtualHost *:80>
-    ServerName fitconnect.local
-    DocumentRoot "C:/Users/user/Desktop/fitConnect Windsurf/public"
-    
-    <Directory "C:/Users/user/Desktop/fitConnect Windsurf/public">
-        AllowOverride All
-        Require all granted
-    </Directory>
-</VirtualHost>
-```
+## Stack technique
 
-## Utilisation
-
-### Accéder à l'application
-
-Ouvrez votre navigateur et accédez à :
-- Dashboard : `http://fitconnect.local/`
-- Adhérents : `http://fitconnect.local/?route=adherents`
-- Abonnements : `http://fitconnect.local/?route=abonnements`
-
-### Tester les couches
-
-Exécutez le fichier de test pour vérifier le bon fonctionnement de chaque couche :
-```
-http://fitconnect.local/test.php
-```
-
-## Règles de Gestion
-
-- Un adhérent possède une salle d'inscription parmi les 4 salles du réseau
-- Un adhérent ne détient qu'un seul abonnement actif à la fois
-- Une séance ne peut être enregistrée que si l'abonnement de l'adhérent est valide
-- Un adhérent ne peut pas être supprimé s'il possède des séances enregistrées ou un abonnement en cours
-- Toute création, modification ou suppression respecte l'intégrité référentielle
-
-## Entités
-
-### Adherent
-- id_adherent
-- nom
-- prenom
-- email
-- telephone
-- date_inscription
-- id_salle (FK)
-
-### Abonnement
-- id_abonnement
-- type_abonnement (mensuel, trimestriel, annuel)
-- date_debut
-- date_fin
-- id_adherent (FK)
-
-### Seance
-- id_seance
-- date_seance
-- duree (en minutes)
-- id_adherent (FK)
-- id_salle (FK)
-- id_activite (FK, optionnel)
-- id_equipement (FK, optionnel)
-
-### Salle
-- id_salle
-- nom_salle
-- adresse
-- ville
-
-### Type_Activite
-- id_activite
-- libelle
-
-### Equipement
-- id_equipement
-- nom_equipement
-
-## Développement
-
-### Ajouter une nouvelle fonctionnalité
-
-1. Définir l'entité dans `app/Entities/`
-2. Créer le repository dans `app/Repositories/`
-3. Implémenter les règles métier dans `app/Services/`
-4. Créer le controller dans `app/Controllers/`
-5. Ajouter les vues dans `views/`
-6. Mettre à jour le routeur dans `public/index.php`
+- PHP 8.1+ (types stricts, `match`, propriétés typées)
+- MySQL / MariaDB (InnoDB, contraintes de clés étrangères)
+- PDO (`PDO::ATTR_EMULATE_PREPARES => false`)
+- Aucune dépendance externe (pas de framework, pas de Composer requis)
 
 ## Auteur
 
-Développé par DevAcademy pour Karim Benslimane, fondateur du réseau FitConnect.
+Projet réalisé dans le cadre du parcours Développeur Web et Web Mobile — DevAcademy.

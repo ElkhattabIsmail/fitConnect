@@ -1,96 +1,96 @@
 <?php
 
-namespace App\Entities;
-
+/**
+ * Entité Abonnement — encapsule les règles de validité
+ * d'un abonnement (mensuel / trimestriel / annuel).
+ */
 class Abonnement
 {
-    private int $id_abonnement;
-    private string $type_abonnement;
-    private string $date_debut;
-    private string $date_fin;
-    private int $id_adherent;
-    
+    public const TYPE_MENSUEL     = 'mensuel';
+    public const TYPE_TRIMESTRIEL = 'trimestriel';
+    public const TYPE_ANNUEL      = 'annuel';
+
+    public const STATUT_ACTIF   = 'actif';
+    public const STATUT_EXPIRE  = 'expire';
+    public const STATUT_RESILIE = 'resilie';
+
+    private ?int $idAbonnement;
+    private string $type;
+    private string $dateDebut;
+    private string $dateFin;
+    private string $statut;
+    private int $idAdherent;
+
     public function __construct(
-        string $type_abonnement,
-        string $date_debut,
-        string $date_fin,
-        int $id_adherent,
-        ?int $id_abonnement = null
+        ?int $idAbonnement,
+        string $type,
+        string $dateDebut,
+        string $dateFin,
+        string $statut,
+        int $idAdherent
     ) {
-        $this->type_abonnement = $type_abonnement;
-        $this->date_debut = $date_debut;
-        $this->date_fin = $date_fin;
-        $this->id_adherent = $id_adherent;
-        $this->id_abonnement = $id_abonnement ?? 0;
+        $this->idAbonnement = $idAbonnement;
+        $this->setType($type);
+        $this->dateDebut = $dateDebut;
+        $this->dateFin = $dateFin;
+        $this->statut = $statut;
+        $this->idAdherent = $idAdherent;
     }
-    
-    public function getIdAbonnement(): int
+
+    // ---- Getters ----
+    public function getIdAbonnement(): ?int { return $this->idAbonnement; }
+    public function getType(): string { return $this->type; }
+    public function getDateDebut(): string { return $this->dateDebut; }
+    public function getDateFin(): string { return $this->dateFin; }
+    public function getStatut(): string { return $this->statut; }
+    public function getIdAdherent(): int { return $this->idAdherent; }
+
+    // ---- Setters ----
+    public function setType(string $type): void
     {
-        return $this->id_abonnement;
-    }
-    
-    public function setIdAbonnement(int $id_abonnement): void
-    {
-        $this->id_abonnement = $id_abonnement;
-    }
-    
-    public function getTypeAbonnement(): string
-    {
-        return $this->type_abonnement;
-    }
-    
-    public function setTypeAbonnement(string $type_abonnement): void
-    {
-        if (!in_array($type_abonnement, ['mensuel', 'trimestriel', 'annuel'])) {
-            throw new \InvalidArgumentException('Type d\'abonnement invalide');
+        $valides = [self::TYPE_MENSUEL, self::TYPE_TRIMESTRIEL, self::TYPE_ANNUEL];
+        if (!in_array($type, $valides, true)) {
+            throw new InvalidArgumentException("Type d'abonnement invalide : {$type}");
         }
-        $this->type_abonnement = $type_abonnement;
+        $this->type = $type;
     }
-    
-    public function getDateDebut(): string
+
+    public function setStatut(string $statut): void { $this->statut = $statut; }
+    public function setIdAbonnement(int $id): void { $this->idAbonnement = $id; }
+
+    /**
+     * Vérifie si l'abonnement est valide à une date donnée (par défaut : aujourd'hui).
+     * Règle métier centrale : utilisée par SeanceService avant d'enregistrer une séance.
+     */
+    public function estValide(?string $date = null): bool
     {
-        return $this->date_debut;
+        $date = $date ?? date('Y-m-d');
+        return $this->statut === self::STATUT_ACTIF
+            && $date >= $this->dateDebut
+            && $date <= $this->dateFin;
     }
-    
-    public function setDateDebut(string $date_debut): void
+
+    public static function fromArray(array $row): self
     {
-        $this->date_debut = $date_debut;
+        return new self(
+            (int) $row['id_abonnement'],
+            $row['type'],
+            $row['date_debut'],
+            $row['date_fin'],
+            $row['statut'],
+            (int) $row['id_adherent']
+        );
     }
-    
-    public function getDateFin(): string
-    {
-        return $this->date_fin;
-    }
-    
-    public function setDateFin(string $date_fin): void
-    {
-        $this->date_fin = $date_fin;
-    }
-    
-    public function getIdAdherent(): int
-    {
-        return $this->id_adherent;
-    }
-    
-    public function setIdAdherent(int $id_adherent): void
-    {
-        $this->id_adherent = $id_adherent;
-    }
-    
-    public function isValid(string $date = null): bool
-    {
-        $checkDate = $date ?? date('Y-m-d');
-        return $checkDate >= $this->date_debut && $checkDate <= $this->date_fin;
-    }
-    
+
     public function toArray(): array
     {
         return [
-            'id_abonnement' => $this->id_abonnement,
-            'type_abonnement' => $this->type_abonnement,
-            'date_debut' => $this->date_debut,
-            'date_fin' => $this->date_fin,
-            'id_adherent' => $this->id_adherent
+            'id_abonnement' => $this->idAbonnement,
+            'type'          => $this->type,
+            'date_debut'    => $this->dateDebut,
+            'date_fin'      => $this->dateFin,
+            'statut'        => $this->statut,
+            'id_adherent'   => $this->idAdherent,
         ];
     }
 }

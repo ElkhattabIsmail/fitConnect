@@ -1,112 +1,54 @@
 <?php
 
-namespace App\Controllers;
-
-use App\Services\AbonnementService;
-use App\Entities\Abonnement;
-use Exception;
-
+/**
+ * AbonnementController — orchestre AbonnementService, AdherentService
+ * et les vues pour tout ce qui concerne les abonnements.
+ */
 class AbonnementController
 {
     private AbonnementService $abonnementService;
-    private string $baseUrl;
-    
-    public function __construct()
+    private AdherentService $adherentService;
+
+    public function __construct(AbonnementService $abonnementService, AdherentService $adherentService)
     {
-        $this->abonnementService = new AbonnementService();
-        $this->baseUrl = $_SERVER['SCRIPT_NAME'];
+        $this->abonnementService = $abonnementService;
+        $this->adherentService = $adherentService;
     }
-    
+
+    /** GET /?page=abonnements */
     public function index(): void
     {
-        global $baseUrl;
-        $baseUrl = $this->baseUrl;
-        $abonnements = $this->abonnementService->getAllAbonnements();
+        $abonnements = $this->abonnementService->listerTous();
+        $adherents = $this->adherentService->listerTous();
+        $adherentsParId = [];
+        foreach ($adherents as $a) {
+            $adherentsParId[$a->getIdAdherent()] = $a->getNomComplet();
+        }
+
         require __DIR__ . '/../../views/abonnements/index.php';
     }
-    
+
+    /** GET /?page=abonnements&action=create */
     public function create(): void
     {
-        global $baseUrl;
-        $baseUrl = $this->baseUrl;
-        
-        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-            try {
-                $abonnement = new Abonnement(
-                    $_POST['type_abonnement'],
-                    $_POST['date_debut'],
-                    $_POST['date_fin'],
-                    (int) $_POST['id_adherent']
-                );
-                
-                $this->abonnementService->createAbonnement($abonnement);
-                header('Location: ' . $this->baseUrl . '?route=abonnements');
-                exit;
-            } catch (Exception $e) {
-                $error = $e->getMessage();
-            }
-        }
-        
+        $adherents = $this->adherentService->listerTous();
+        $erreur = null;
         require __DIR__ . '/../../views/abonnements/create.php';
     }
-    
-    public function edit(int $id): void
+
+    /** POST /?page=abonnements&action=store */
+    public function store(): void
     {
-        global $baseUrl;
-        $baseUrl = $this->baseUrl;
-        
-        $abonnement = $this->abonnementService->getAbonnementById($id);
-        
-        if (!$abonnement) {
-            header('Location: ' . $this->baseUrl . '?route=abonnements');
-            exit;
-        }
-        
-        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-            try {
-                $abonnement->setTypeAbonnement($_POST['type_abonnement']);
-                $abonnement->setDateDebut($_POST['date_debut']);
-                $abonnement->setDateFin($_POST['date_fin']);
-                
-                $this->abonnementService->updateAbonnement($abonnement);
-                header('Location: ' . $this->baseUrl . '?route=abonnements');
-                exit;
-            } catch (Exception $e) {
-                $error = $e->getMessage();
-            }
-        }
-        
-        require __DIR__ . '/../../views/abonnements/edit.php';
-    }
-    
-    public function delete(int $id): void
-    {
-        global $baseUrl;
-        $baseUrl = $this->baseUrl;
-        
+        $adherents = $this->adherentService->listerTous();
+        $erreur = null;
+
         try {
-            $this->abonnementService->deleteAbonnement($id);
-            header('Location: ' . $this->baseUrl . '?route=abonnements');
+            $this->abonnementService->souscrire($_POST);
+            header('Location: index.php?page=abonnements&success=1');
             exit;
-        } catch (Exception $e) {
-            $error = $e->getMessage();
-            $abonnements = $this->abonnementService->getAllAbonnements();
-            require __DIR__ . '/../../views/abonnements/index.php';
+        } catch (Throwable $e) {
+            $erreur = $e->getMessage();
+            require __DIR__ . '/../../views/abonnements/create.php';
         }
-    }
-    
-    public function show(int $id): void
-    {
-        global $baseUrl;
-        $baseUrl = $this->baseUrl;
-        
-        $abonnement = $this->abonnementService->getAbonnementById($id);
-        
-        if (!$abonnement) {
-            header('Location: ' . $this->baseUrl . '?route=abonnements');
-            exit;
-        }
-        
-        require __DIR__ . '/../../views/abonnements/show.php';
     }
 }

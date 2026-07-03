@@ -1,6 +1,21 @@
-# Configuration
-config/Database.php
+# Environnement
+.env
+.DS_Store
+Thumbs.db
 
-# Cache
-cache/
-tmp/
+# Dépendances (si Composer est ajouté plus tard)
+vendor/
+composer.lock
+
+# IDE
+.vscode/
+.idea/
+*.sublime-*
+
+# Logs
+*.log
+error_log
+
+# Fichiers temporaires
+*.tmp
+*.bak

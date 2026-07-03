@@ -1,163 +1,105 @@
 <?php
 
-namespace App\Repositories;
-
-use App\Entities\Adherent;
-use Config\Database;
-use PDO;
-
+/**
+ * AdherentRepository — unique responsable de l'accès aux données
+ * de la table `adherents`. Toutes les requêtes sont paramétrées.
+ */
 class AdherentRepository
 {
-    private PDO $db;
-    
-    public function __construct()
+    private PDO $pdo;
+
+    public function __construct(PDO $pdo)
     {
-        $this->db = Database::getConnection();
+        $this->pdo = $pdo;
     }
-    
+
     public function findAll(): array
     {
-        $stmt = $this->db->query('
-            SELECT a.*, s.nom_salle 
-            FROM ADHERENT a 
-            LEFT JOIN SALLE s ON a.id_salle = s.id_salle 
-            ORDER BY a.nom, a.prenom
-        ');
-        
-        $adherents = [];
-        while ($row = $stmt->fetch()) {
-            $adherent = new Adherent(
-                $row['nom'],
-                $row['prenom'],
-                $row['email'],
-                $row['date_inscription'],
-                $row['id_salle'],
-                $row['telephone'],
-                $row['id_adherent']
-            );
-            $adherents[] = $adherent;
-        }
-        
-        return $adherents;
+        $stmt = $this->pdo->query(
+            'SELECT * FROM adherents ORDER BY nom, prenom'
+        );
+        return array_map(fn($row) => Adherent::fromArray($row), $stmt->fetchAll());
     }
-    
+
     public function findById(int $id): ?Adherent
     {
-        $stmt = $this->db->prepare('
-            SELECT a.*, s.nom_salle 
-            FROM ADHERENT a 
-            LEFT JOIN SALLE s ON a.id_salle = s.id_salle 
-            WHERE a.id_adherent = :id
-        ');
+        $stmt = $this->pdo->prepare('SELECT * FROM adherents WHERE id_adherent = :id');
         $stmt->execute(['id' => $id]);
         $row = $stmt->fetch();
-        
-        if (!$row) {
-            return null;
-        }
-        
-        return new Adherent(
-            $row['nom'],
-            $row['prenom'],
-            $row['email'],
-            $row['date_inscription'],
-            $row['id_salle'],
-            $row['telephone'],
-            $row['id_adherent']
-        );
+        return $row ? Adherent::fromArray($row) : null;
     }
-    
-    public function findBySalle(int $idSalle): array
+
+    public function findByEmail(string $email): ?Adherent
     {
-        $stmt = $this->db->prepare('
-            SELECT a.*, s.nom_salle 
-            FROM ADHERENT a 
-            LEFT JOIN SALLE s ON a.id_salle = s.id_salle 
-            WHERE a.id_salle = :idSalle 
-            ORDER BY a.nom, a.prenom
-        ');
-        $stmt->execute(['idSalle' => $idSalle]);
-        
-        $adherents = [];
-        while ($row = $stmt->fetch()) {
-            $adherent = new Adherent(
-                $row['nom'],
-                $row['prenom'],
-                $row['email'],
-                $row['date_inscription'],
-                $row['id_salle'],
-                $row['telephone'],
-                $row['id_adherent']
-            );
-            $adherents[] = $adherent;
-        }
-        
-        return $adherents;
+        $stmt = $this->pdo->prepare('SELECT * FROM adherents WHERE email = :email');
+        $stmt->execute(['email' => $email]);
+        $row = $stmt->fetch();
+        return $row ? Adherent::fromArray($row) : null;
     }
-    
+
     public function create(Adherent $adherent): int
     {
-        $stmt = $this->db->prepare('
-            INSERT INTO ADHERENT (nom, prenom, email, telephone, date_inscription, id_salle)
-            VALUES (:nom, :prenom, :email, :telephone, :date_inscription, :id_salle)
-        ');
-        
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO adherents (nom, prenom, email, telephone, date_naissance, date_inscription, id_salle)
+             VALUES (:nom, :prenom, :email, :telephone, :date_naissance, :date_inscription, :id_salle)'
+        );
         $stmt->execute([
-            'nom' => $adherent->getNom(),
-            'prenom' => $adherent->getPrenom(),
-            'email' => $adherent->getEmail(),
-            'telephone' => $adherent->getTelephone(),
+            'nom'              => $adherent->getNom(),
+            'prenom'           => $adherent->getPrenom(),
+            'email'            => $adherent->getEmail(),
+            'telephone'        => $adherent->getTelephone(),
+            'date_naissance'   => $adherent->getDateNaissance(),
             'date_inscription' => $adherent->getDateInscription(),
-            'id_salle' => $adherent->getIdSalle()
+            'id_salle'         => $adherent->getIdSalle(),
         ]);
-        
-        return (int) $this->db->lastInsertId();
+        return (int) $this->pdo->lastInsertId();
     }
-    
+
     public function update(Adherent $adherent): bool
     {
-        $stmt = $this->db->prepare('
-            UPDATE ADHERENT 
-            SET nom = :nom, 
-                prenom = :prenom, 
-                email = :email, 
-                telephone = :telephone, 
-                id_salle = :id_salle
-            WHERE id_adherent = :id
-        ');
-        
+        $stmt = $this->pdo->prepare(
+            'UPDATE adherents
+             SET nom = :nom, prenom = :prenom, email = :email, telephone = :telephone,
+                 date_naissance = :date_naissance, id_salle = :id_salle
+             WHERE id_adherent = :id'
+        );
         return $stmt->execute([
-            'nom' => $adherent->getNom(),
-            'prenom' => $adherent->getPrenom(),
-            'email' => $adherent->getEmail(),
-            'telephone' => $adherent->getTelephone(),
-            'id_salle' => $adherent->getIdSalle(),
-            'id' => $adherent->getIdAdherent()
+            'nom'            => $adherent->getNom(),
+            'prenom'         => $adherent->getPrenom(),
+            'email'          => $adherent->getEmail(),
+            'telephone'      => $adherent->getTelephone(),
+            'date_naissance' => $adherent->getDateNaissance(),
+            'id_salle'       => $adherent->getIdSalle(),
+            'id'             => $adherent->getIdAdherent(),
         ]);
     }
-    
+
     public function delete(int $id): bool
     {
-        $stmt = $this->db->prepare('DELETE FROM ADHERENT WHERE id_adherent = :id');
+        $stmt = $this->pdo->prepare('DELETE FROM adherents WHERE id_adherent = :id');
         return $stmt->execute(['id' => $id]);
     }
-    
-    public function hasSeances(int $idAdherent): bool
+
+    /**
+     * Compte le nombre de séances liées à un adhérent (utilisé pour la règle
+     * "un adhérent avec des séances ne peut pas être supprimé").
+     */
+    public function countSeances(int $idAdherent): int
     {
-        $stmt = $this->db->prepare('SELECT COUNT(*) FROM SEANCE WHERE id_adherent = :id');
+        $stmt = $this->pdo->prepare('SELECT COUNT(*) FROM seances WHERE id_adherent = :id');
         $stmt->execute(['id' => $idAdherent]);
-        return $stmt->fetchColumn() > 0;
+        return (int) $stmt->fetchColumn();
     }
-    
-    public function hasActiveAbonnement(int $idAdherent): bool
+
+    /**
+     * Compte les abonnements en cours (statut actif) d'un adhérent.
+     */
+    public function countAbonnementsActifs(int $idAdherent): int
     {
-        $stmt = $this->db->prepare('
-            SELECT COUNT(*) 
-            FROM ABONNEMENT 
-            WHERE id_adherent = :id 
-            AND date_fin >= CURDATE()
-        ');
+        $stmt = $this->pdo->prepare(
+            "SELECT COUNT(*) FROM abonnements WHERE id_adherent = :id AND statut = 'actif'"
+        );
         $stmt->execute(['id' => $idAdherent]);
-        return $stmt->fetchColumn() > 0;
+        return (int) $stmt->fetchColumn();
     }
 }
