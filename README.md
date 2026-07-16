@@ -177,7 +177,3 @@ http://fitconnect.local/test.php
 4. Créer le controller dans `app/Controllers/`
 5. Ajouter les vues dans `views/`
 6. Mettre à jour le routeur dans `public/index.php`
-
-## Auteur
-
-Développé par DevAcademy pour Karim Benslimane, fondateur du réseau FitConnect.
